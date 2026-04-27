@@ -700,14 +700,6 @@ td.total{font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;fon
       </div>
     </div>
     <div class="header-actions">
-      <button class="icon-btn" id="cloud-load-btn" onclick="loadFromGAS()" title="從雲端載入最新狀態">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-        <span>☁️ 雲端載入</span>
-      </button>
-      <button class="icon-btn" onclick="openGasSetup()" title="GAS 設定">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        <span>⚙️</span>
-      </button>
       <button class="icon-btn" onclick="exportData()" title="Export JSON">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span data-i18n="action.export">匯出</span>
@@ -1088,6 +1080,10 @@ td.total{font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;fon
     <div class="modal-body">
       <input type="hidden" id="tf-id">
       <input type="hidden" id="tf-status" value="pending_review">
+      <!-- GAS URL warning -->
+      <div id="tf-gas-warning" style="display:none;padding:8px 12px;border-radius:var(--radius-sm);margin-bottom:10px;font-size:12px;background:#FEF3C7;color:#B45309;border-left:3px solid #F59E0B">
+        ⚠️ GAS URL not configured — data will only save locally. Use the <strong>☁</strong> button (bottom-right) to set up cloud sync.
+      </div>
       <!-- Status banner shown when editing -->
       <div id="tf-status-banner" style="display:none;padding:8px 12px;border-radius:var(--radius-sm);margin-bottom:12px;font-size:13px;font-weight:500"></div>
       <div class="form-grid cols-3">
@@ -1373,39 +1369,6 @@ td.total{font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;fon
       <button class="btn btn-secondary" onclick="document.getElementById('phary-modal').classList.remove('open')">取消</button>
       <button class="btn" style="background:var(--red);color:#fff;padding:8px 18px;border-radius:var(--radius-sm);font-weight:600" onclick="pharyDecision('reject')">❌ 退件</button>
       <button class="btn btn-primary" onclick="pharyDecision('pass')">📨 通過送 Paul 核可</button>
-    </div>
-  </div>
-</div>
-
-<!-- GAS URL Setup Modal -->
-<div class="modal-backdrop" id="gas-setup-modal">
-  <div class="modal" style="max-width:500px">
-    <div class="modal-header">
-      <div class="modal-title">⚙️ GAS 雲端設定</div>
-      <button class="modal-close" onclick="document.getElementById('gas-setup-modal').classList.remove('open')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="modal-body">
-      <div style="background:var(--blue-soft);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--blue)">
-        <strong>步驟：</strong><br>
-        1. 部署 GAS Web App（新建專案貼入 .gs 檔）<br>
-        2. 部署 → Web App → 複製 URL<br>
-        3. 貼到下方並儲存<br>
-        4. 點「☁️ 雲端載入」同步最新狀態
-      </div>
-      <div class="form-field">
-        <label>GAS Web App URL</label>
-        <input type="text" id="gas-url-input"
-          style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-family:monospace"
-          placeholder="https://script.google.com/macros/s/XXXXX/exec">
-      </div>
-      <div id="gas-url-status" style="font-size:12px;margin-top:6px;color:var(--ink-mute)"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="document.getElementById('gas-setup-modal').classList.remove('open')">取消</button>
-      <button class="btn btn-ghost btn-sm" onclick="testGasUrl()">測試連線</button>
-      <button class="btn btn-primary" onclick="saveGasUrl()">儲存</button>
     </div>
   </div>
 </div>
@@ -3162,8 +3125,7 @@ document.addEventListener('keydown', e=>{
    ============================================================ */
 // ── 填入部署後的 GAS Web App URL ──
 // 格式: https://script.google.com/macros/s/XXXXX/exec
-// GAS_URL is dynamic — reads from localStorage at call time
-function getGasUrl(){ return localStorage.getItem('vrt_hr_gas_url')||''; }
+// getGasUrl() defined in cloud sync widget below
 const TG_BOT   = '8651537941:AAGNpfBoF-BECpqWkbVSDPnC6JFtVK-ZvAo';
 const TG_CHAT  = '-5089251196';
 
@@ -3667,6 +3629,9 @@ function openTransferModal(id){
 
   document.getElementById('tf-id').value = id||'';
   document.getElementById('tf-status').value = 'pending_review';
+  // Show GAS URL warning if not configured
+  const gasWarn = document.getElementById('tf-gas-warning');
+  if(gasWarn) gasWarn.style.display = getGasUrl() ? 'none' : 'block';
 
   if(id){
     const r = state.transfers.find(x=>x.id===id);
@@ -3754,13 +3719,18 @@ function saveTransfer(){
   renderTransfer();
   renderDashboard();
 
-  // Sync to GAS (GAS will send Telegram notification)
-  if(isNew){
-    syncTransferToGAS(record, 'new');
-  } else {
-    syncTransferToGAS(record, 'update');
-  }
-  toast(isNew ? '✅ Application submitted — notifying Phary' : t('toast.saved'), 'success');
+  // Sync to GAS with visible feedback
+  const syncAction = isNew ? 'new' : 'update';
+  const baseMsg = isNew ? '✅ Application submitted' : '✅ Updated';
+  toast(baseMsg + ' — uploading to cloud...', 'success');
+
+  syncTransferToGAS(record, syncAction).then(ok => {
+    if(ok){
+      toast(baseMsg + (isNew ? ' — Phary notified via Telegram ☁️' : ' & synced ☁️'), 'success');
+    } else {
+      toast(baseMsg + ' (locally saved — cloud sync failed, check ☁ button)', 'error');
+    }
+  });
 }
 
 function deleteTransfer(id){
@@ -3867,49 +3837,47 @@ function buildTransferSummaryHtml(r){
 async function syncTransferToGAS(record, action){
   const url = getGasUrl();
   if(!url){
-    console.warn('GAS URL not set — open ⚙️ to configure');
-    toast('⚙️ GAS URL not configured. Click gear icon top-right.', 'error');
-    return;
+    console.warn('GAS URL not set');
+    return false;
   }
   try{
-    // Slim payload — only fields GAS needs (avoid URL length limits)
     const slim = {
       _action:      action,
       id:           record.id,
-      submittedAt:  record.submittedAt || new Date().toISOString(),
-      applicant:    record.applicant   || '',
-      empId:        record.empId       || '',
-      empName:      record.empName     || '',
-      joinDate:     record.joinDate    || '',
-      effectiveDate:record.effectiveDate || '',
-      reason:       record.reason      || '',
+      submittedAt:  record.submittedAt  || new Date().toISOString(),
+      applicant:    record.applicant    || '',
+      empId:        record.empId        || '',
+      empName:      record.empName      || '',
+      joinDate:     record.joinDate     || '',
+      effectiveDate:record.effectiveDate|| '',
+      reason:       record.reason       || '',
       reasonDetail: record.reasonDetail || '',
-      origDept:     record.origDept    || '',
-      origPos:      record.origPos     || '',
-      origBasic:    record.origBasic   || 0,
-      origPosAdd:   record.origPosAdd  || 0,
-      origSkill:    record.origSkill   || 0,
-      origLang:     record.origLang    || 0,
-      newDept:      record.newDept     || '',
-      newPos:       record.newPos      || '',
-      newBasic:     record.newBasic    || 0,
-      newPosAdd:    record.newPosAdd   || 0,
-      newSkill:     record.newSkill    || 0,
-      newLang:      record.newLang     || 0,
-      status:       record.status      || 'pending_review',
-      reviewNote:   record.reviewNote  || '',
-      reviewedAt:   record.reviewedAt  || '',
-      approveNote:  record.approveNote || '',
-      approvedAt:   record.approvedAt  || ''
+      origDept:     record.origDept     || '',
+      origPos:      record.origPos      || '',
+      origBasic:    record.origBasic    || 0,
+      origPosAdd:   record.origPosAdd   || 0,
+      origSkill:    record.origSkill    || 0,
+      origLang:     record.origLang     || 0,
+      newDept:      record.newDept      || '',
+      newPos:       record.newPos       || '',
+      newBasic:     record.newBasic     || 0,
+      newPosAdd:    record.newPosAdd    || 0,
+      newSkill:     record.newSkill     || 0,
+      newLang:      record.newLang      || 0,
+      status:       record.status       || 'pending_review',
+      reviewNote:   record.reviewNote   || '',
+      reviewedAt:   record.reviewedAt   || '',
+      approveNote:  record.approveNote  || '',
+      approvedAt:   record.approvedAt   || ''
     };
-    // GET fetch — same pattern as other VRT systems (GAS Web App handles CORS)
-    const qs = 'action=hrSync&data=' + encodeURIComponent(JSON.stringify(slim));
+    const qs  = 'action=hrSync&data=' + encodeURIComponent(JSON.stringify(slim));
     const res = await fetch(url + '?' + qs);
     const result = await res.json();
-    if(result.ok) console.log('GAS sync OK:', action);
-    else console.warn('GAS sync returned error:', result);
+    if(result.ok){ return true; }
+    else { console.warn('GAS sync error:', result); return false; }
   }catch(e){
     console.warn('GAS sync failed:', e.message);
+    return false;
   }
 }
 
@@ -3949,7 +3917,7 @@ async function syncSalaryYearToGAS(year){
 
 async function syncAllSalaryToGAS(){
   const url = getGasUrl();
-  if(!url){ toast('⚙️ GAS URL not set','error'); return; }
+  if(!url){ toast('請在右下角 ☁ 按鈕設定 GAS URL','error'); return; }
   const years = Object.keys(state.salaryByYear);
   let count = 0;
   for(const year of years){
@@ -3966,9 +3934,7 @@ async function syncAllSalaryToGAS(){
 }
 
 async function loadFromGAS(){
-  if(!getGasUrl()){ toast('請先設定 GAS URL（右上角 ⚙️ 按鈕）','error'); return; }
-  const btn = document.getElementById('cloud-load-btn');
-  if(btn){ btn.disabled=true; btn.textContent='載入中…'; }
+  if(!getGasUrl()){ toast('請先在右下角 ☁ 設定 GAS URL','error'); return; }
   try{
     const res  = await fetch(`${getGasUrl()}?action=hrList`);
     const data = await res.json();
@@ -4042,8 +4008,7 @@ async function loadFromGAS(){
     toast(`☁️ Loaded: ${totalInd} transfers · ${salaryYears} salary year(s) synced`, 'success');
   }catch(e){
     toast('☁️ 載入失敗：'+e.message,'error');
-  } finally {
-    if(btn){ btn.disabled=false; btn.textContent='☁️ 從雲端載入'; }
+    console.warn('loadFromGAS error:', e);
   }
 }
 
@@ -4084,50 +4049,223 @@ async function sendTelegramNotify(r, event){
   }catch(e){ console.warn('Telegram notify failed:',e); }
 }
 
-/* ============================================================
-   GAS URL SETUP
-   ============================================================ */
-function openGasSetup(){
-  const saved = localStorage.getItem('vrt_hr_gas_url')||'';
-  document.getElementById('gas-url-input').value = saved;
-  document.getElementById('gas-url-status').textContent = saved ? '✅ 已設定' : '尚未設定';
-  document.getElementById('gas-setup-modal').classList.add('open');
-}
 
-function saveGasUrl(){
-  const url = document.getElementById('gas-url-input').value.trim();
-  if(url && !url.startsWith('https://script.google.com')){
-    document.getElementById('gas-url-status').textContent='❌ URL 格式不正確';
-    return;
+
+</script>
+
+<!-- ═══════════════════════════════════════════════════════
+     VRT HR 雲端同步浮動按鈕（☁）— same pattern as sewing_v5
+     ═══════════════════════════════════════════════════════ -->
+<style>
+#hrCloudBtn{
+  position:fixed;bottom:22px;right:22px;z-index:9999;
+  width:46px;height:46px;border-radius:50%;
+  background:linear-gradient(135deg,#1a2540,#253058);
+  border:1px solid #2d3a6e;color:#93c5fd;font-size:20px;
+  cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.45);
+  display:flex;align-items:center;justify-content:center;
+  transition:all .2s;user-select:none;
+}
+#hrCloudBtn:hover{transform:scale(1.08);border-color:#3b82f6;color:#60a5fa}
+#hrCloudPanel{
+  position:fixed;bottom:76px;right:22px;z-index:9999;
+  width:240px;background:#0f1929;border:1px solid #1e3050;
+  border-radius:14px;padding:14px;
+  box-shadow:0 8px 32px rgba(0,0,0,.6);
+  display:none;flex-direction:column;gap:9px;
+  font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif;
+}
+#hrCloudPanel.show{display:flex}
+.hcp-title{font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px}
+.hcp-status{font-size:11px;color:#475569;font-family:monospace;min-height:14px;line-height:1.5}
+.hcp-status.ok{color:#4ade80}.hcp-status.warn{color:#fbbf24}.hcp-status.err{color:#f87171}
+.hcp-row{display:flex;gap:7px}
+.hcp-btn{
+  flex:1;padding:8px 6px;border-radius:8px;font-size:12px;font-weight:700;
+  cursor:pointer;border:none;font-family:inherit;
+  display:flex;align-items:center;justify-content:center;gap:4px;transition:.15s;
+}
+.hcp-push{background:#1c1500;border:1px solid #92400e;color:#fbbf24}
+.hcp-push:hover{background:#292000}
+.hcp-pull{background:#0c1a2c;border:1px solid #1d4ed8;color:#93c5fd}
+.hcp-pull:hover{background:#0f2040}
+.hcp-btn:disabled{opacity:.4;cursor:not-allowed}
+.hcp-gasrow{display:flex;gap:5px;align-items:center}
+.hcp-gasinput{
+  flex:1;background:#0a1120;border:1px solid #1e3050;border-radius:6px;
+  color:#f1f5f9;padding:5px 8px;font-size:10px;font-family:monospace;outline:none;
+}
+.hcp-gasinput:focus{border-color:#f59e0b}
+.hcp-gassave{background:#253058;border:none;color:#cbd5e1;border-radius:6px;padding:5px 8px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit}
+.hcp-log{font-size:10px;font-family:monospace;color:#475569;max-height:70px;overflow-y:auto;line-height:1.6;border-top:1px solid #1e3050;padding-top:7px}
+.hcl-ok{color:#4ade80}.hcl-err{color:#f87171}.hcl-i{color:#60a5fa}
+@keyframes hcSpin{to{transform:rotate(360deg)}}
+.hcSpin{display:inline-block;animation:hcSpin .7s linear infinite}
+</style>
+
+<button id="hrCloudBtn" title="☁ VRT HR 雲端同步" onclick="hcToggle()">☁</button>
+
+<div id="hrCloudPanel">
+  <div class="hcp-title">☁ 雲端同步 — HR</div>
+  <div class="hcp-status" id="hcStatus">讀取中...</div>
+  <div class="hcp-row">
+    <button class="hcp-btn hcp-push" id="hcPushBtn" onclick="hcPush()">☁ 推送</button>
+    <button class="hcp-btn hcp-pull" id="hcPullBtn" onclick="hcPull()">⬇ 拉取</button>
+  </div>
+  <div>
+    <div style="font-size:10px;color:#475569;margin-bottom:4px">GAS URL</div>
+    <div class="hcp-gasrow">
+      <input class="hcp-gasinput" id="hcGasInput" placeholder="...script.google.com/.../exec" />
+      <button class="hcp-gassave" onclick="hcSaveGas()">存</button>
+    </div>
+  </div>
+  <div class="hcp-log" id="hcLog"></div>
+</div>
+
+<script>
+(function(){
+  const LS_GAS  = 'vrt_hr_gas_url';
+  const LS_META = 'vrt_hr_cloud_meta';
+  let gasUrl = '';
+  let panelOpen = false;
+
+  function hcInit(){
+    gasUrl = localStorage.getItem(LS_GAS) || '';
+    document.getElementById('hcGasInput').value = gasUrl;
+    hcShowStatus();
   }
-  localStorage.setItem('vrt_hr_gas_url', url);
-  // Update runtime constant
-  window._gasUrl = url;
-  document.getElementById('gas-url-status').textContent = url ? '✅ 已儲存' : '已清除';
-  document.getElementById('gas-setup-modal').classList.remove('open');
-  toast(url ? '✅ GAS URL 已儲存，可點「☁️ 雲端載入」同步' : 'GAS URL 已清除', 'success');
-}
 
-async function testGasUrl(){
-  const url = document.getElementById('gas-url-input').value.trim();
-  if(!url){ document.getElementById('gas-url-status').textContent='請先填入 URL'; return; }
-  document.getElementById('gas-url-status').textContent='測試中…';
-  try{
-    const res  = await fetch(url+'?action=setWebhookOk');
-    const data = await res.json();
-    document.getElementById('gas-url-status').textContent = data.ok ? '✅ 連線成功！' : '⚠️ '+JSON.stringify(data);
-  }catch(e){
-    document.getElementById('gas-url-status').textContent='❌ 連線失敗: '+e.message;
+  window.hcToggle = function(){
+    panelOpen = !panelOpen;
+    document.getElementById('hrCloudPanel').classList.toggle('show', panelOpen);
+    if(panelOpen) hcInit();
+  };
+
+  window.hcSaveGas = function(){
+    gasUrl = document.getElementById('hcGasInput').value.trim();
+    if(!gasUrl) return;
+    localStorage.setItem(LS_GAS, gasUrl);
+    hcLog('GAS URL 已儲存', 'i');
+    hcShowStatus();
+  };
+
+  function hcShowStatus(){
+    const el   = document.getElementById('hcStatus');
+    const meta = JSON.parse(localStorage.getItem(LS_META) || 'null');
+    // Count all HR records
+    const st   = JSON.parse(localStorage.getItem('vrt_salary_hr_v1') || '{}');
+    const tCount = (st.transfers || []).length;
+    const gCount = (st.groupTransfers || []).length;
+    const sYears = Object.keys(st.salaryByYear || {}).length;
+    const summary = `異動${tCount} 團體${gCount} 薪資${sYears}年`;
+    if(meta){
+      const mins = (Date.now() - new Date(meta.ts)) / 60000;
+      const age  = mins < 60 ? `${Math.round(mins)}分前` : `${Math.round(mins/60)}小時前`;
+      el.textContent = `本機：${summary} · 同步${age}`;
+      el.className   = 'hcp-status ' + (mins < 120 ? 'ok' : 'warn');
+    } else {
+      el.textContent = `本機：${summary} · 尚未同步`;
+      el.className   = 'hcp-status warn';
+    }
+    if(!gasUrl){ el.textContent += ' · ⚠ 未設定 GAS URL'; el.className = 'hcp-status err'; }
   }
-}
 
-// Override GAS_URL getter to support runtime updates
-Object.defineProperty(window, '_gasUrl', {
-  get: function(){ return localStorage.getItem('vrt_hr_gas_url')||''; },
-  set: function(v){ localStorage.setItem('vrt_hr_gas_url', v); },
-  configurable: true
-});
+  // ── PUSH — send all HR state to GAS ──
+  window.hcPush = async function(){
+    if(!gasUrl){ hcLog('請先填入 GAS URL', 'err'); return; }
+    hcSetBusy(true);
+    try{
+      const st = JSON.parse(localStorage.getItem('vrt_salary_hr_v1') || '{}');
+      const payload = {
+        tool          : 'hr',
+        transfers     : st.transfers      || [],
+        groupTransfers: st.groupTransfers || [],
+        salaryByYear  : st.salaryByYear   || {},
+        baseWageHistory: st.baseWageHistory || [],
+        pushedAt      : new Date().toISOString()
+      };
+      hcLog(`推送中... (異動${payload.transfers.length}筆 + 團體${payload.groupTransfers.length}筆)`, 'i');
+      const r = await fetch(gasUrl, {
+        method : 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body   : JSON.stringify(payload),
+        redirect: 'follow'
+      });
+      const d = await r.json();
+      if(!d.ok) throw new Error(d.error || JSON.stringify(d));
+      localStorage.setItem(LS_META, JSON.stringify({ ts: Date.now() }));
+      hcLog(`✓ 推送完成`, 'ok');
+      hcShowStatus();
+    }catch(e){
+      hcLog('✗ 推送失敗：' + e.message, 'err');
+    } finally { hcSetBusy(false); }
+  };
 
+  // ── PULL — fetch all HR state from GAS ──
+  window.hcPull = async function(){
+    if(!gasUrl){ hcLog('請先填入 GAS URL', 'err'); return; }
+    if(!confirm('拉取會覆蓋本機 HR 資料，確定嗎？')) return;
+    hcSetBusy(true);
+    hcLog('拉取中...', 'i');
+    try{
+      const r = await fetch(`${gasUrl}?action=pull&tool=hr`, { redirect:'follow' });
+      const d = await r.json();
+      if(!d.ok) throw new Error(d.error || '伺服器錯誤');
+      if(!d.data){ hcLog('雲端尚無 HR 資料', 'err'); return; }
+
+      const cloud = d.data;
+      // Merge into existing localStorage state
+      const st = JSON.parse(localStorage.getItem('vrt_salary_hr_v1') || '{}');
+      if(cloud.transfers)      st.transfers       = cloud.transfers;
+      if(cloud.groupTransfers) st.groupTransfers   = cloud.groupTransfers;
+      if(cloud.salaryByYear)   st.salaryByYear     = cloud.salaryByYear;
+      if(cloud.baseWageHistory)st.baseWageHistory  = cloud.baseWageHistory;
+
+      localStorage.setItem('vrt_salary_hr_v1', JSON.stringify(st));
+      localStorage.setItem(LS_META, JSON.stringify({ ts: Date.now() }));
+      hcLog(`✓ 拉取完成：異動${(cloud.transfers||[]).length}筆`, 'ok');
+      hcShowStatus();
+      if(confirm('拉取完成，立即重新整理頁面？')) location.reload();
+    }catch(e){
+      hcLog('✗ 拉取失敗：' + e.message, 'err');
+    } finally { hcSetBusy(false); }
+  };
+
+  function hcSetBusy(on){
+    document.getElementById('hcPushBtn').disabled = on;
+    document.getElementById('hcPullBtn').disabled = on;
+    if(on){
+      document.getElementById('hcPushBtn').innerHTML = '<span class="hcSpin">⏳</span>';
+      document.getElementById('hcPullBtn').innerHTML = '<span class="hcSpin">⏳</span>';
+    } else {
+      document.getElementById('hcPushBtn').innerHTML = '☁ 推送';
+      document.getElementById('hcPullBtn').innerHTML = '⬇ 拉取';
+    }
+  }
+
+  function hcLog(msg, type){
+    const el  = document.getElementById('hcLog');
+    const now = new Date();
+    const t   = [now.getHours(),now.getMinutes(),now.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':');
+    const cls = type==='ok'?'hcl-ok':type==='err'?'hcl-err':'hcl-i';
+    el.innerHTML += `<span class="${cls}">[${t}] ${msg}</span>
+`;
+    el.scrollTop  = el.scrollHeight;
+  }
+
+  // Close when clicking outside
+  document.addEventListener('click', e=>{
+    if(panelOpen && !document.getElementById('hrCloudPanel').contains(e.target) && e.target.id!=='hrCloudBtn'){
+      panelOpen = false;
+      document.getElementById('hrCloudPanel').classList.remove('show');
+    }
+  });
+
+  // Also expose getGasUrl for other functions
+  window.getGasUrl = function(){ return localStorage.getItem(LS_GAS)||''; };
+
+  hcInit();
+})();
 </script>
 </body>
 </html>
