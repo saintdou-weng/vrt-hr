@@ -786,6 +786,10 @@ td.total{font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;fon
             <span data-i18n="salary.baseWage">基本工資</span>:
             <strong id="base-wage-display" style="color:var(--navy);font-family:var(--font-en)">$210</strong>
           </div>
+          <button class="btn btn-secondary btn-sm" onclick="requirePaul(syncAllSalaryToGAS)" title="Sync all salary years to cloud">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            <span>☁️ Sync</span>
+          </button>
           <button class="btn btn-primary btn-sm" onclick="requirePaul(openSalaryModal)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <span data-i18n="action.add">新增</span>
@@ -2413,6 +2417,7 @@ function saveSalary(){
   saveState();
   closeSalaryModal();
   setSalaryCategory(record.category);
+  syncSalaryYearToGAS(state.ui.salaryYear);
   toast(t('toast.saved'),'success');
 }
 
@@ -2421,6 +2426,7 @@ function deleteSalary(id){
   setCurrentYearSalary(currentYearSalary().filter(r=>r.id!==id));
   saveState();
   renderSalary();
+  syncSalaryYearToGAS(state.ui.salaryYear);
   toast(t('toast.deleted'),'success');
 }
 
@@ -2483,6 +2489,7 @@ function doCopyYear(){
   renderYearSwitcher();
   renderSalary();
   renderBaseWageTable();
+  syncSalaryYearToGAS(newYear);
   toast(t('toast.saved'),'success');
 }
 
@@ -3443,7 +3450,9 @@ function saveGroupTransfer(){
   const id = document.getElementById('gf-id').value;
   const record = { id:id||uid('g'), appDate, effectiveDate:document.getElementById('gf-effectiveDate').value, type:document.getElementById('gf-type').value, note:document.getElementById('gf-note').value.trim(), employees };
   if(id){ const idx=state.groupTransfers.findIndex(x=>x.id===id); if(idx>=0) state.groupTransfers[idx]=record; } else { state.groupTransfers.push(record); }
-  saveState(); closeGroupModal(); renderGroupTransfers(); toast(t('toast.saved'),'success');
+  saveState(); closeGroupModal(); renderGroupTransfers();
+  syncGroupToGAS(record);
+  toast(t('toast.saved'),'success');
 }
 function deleteGroupTransfer(id){
   if(!confirm(t('confirm.delete'))) return;
@@ -3857,21 +3866,103 @@ function buildTransferSummaryHtml(r){
    ============================================================ */
 async function syncTransferToGAS(record, action){
   const url = getGasUrl();
-  if(!url){ 
+  if(!url){
     console.warn('GAS URL not set — open ⚙️ to configure');
-    toast('⚙️ GAS URL not set. Click the gear icon to configure cloud sync.', 'error');
-    return; 
+    toast('⚙️ GAS URL not configured. Click gear icon top-right.', 'error');
+    return;
   }
   try{
-    const data = JSON.stringify({...record, _action: action});
-    // Use URLSearchParams + no-cors POST to avoid GET URL length limits
-    const body = new URLSearchParams({ action: 'hrSync', data });
-    fetch(url, {
-      method: 'POST',
-      mode: 'no-cors',
-      body,
-    }).catch(e => console.warn('GAS sync fetch error:', e));
-  }catch(e){ console.warn('GAS sync failed:',e); }
+    // Slim payload — only fields GAS needs (avoid URL length limits)
+    const slim = {
+      _action:      action,
+      id:           record.id,
+      submittedAt:  record.submittedAt || new Date().toISOString(),
+      applicant:    record.applicant   || '',
+      empId:        record.empId       || '',
+      empName:      record.empName     || '',
+      joinDate:     record.joinDate    || '',
+      effectiveDate:record.effectiveDate || '',
+      reason:       record.reason      || '',
+      reasonDetail: record.reasonDetail || '',
+      origDept:     record.origDept    || '',
+      origPos:      record.origPos     || '',
+      origBasic:    record.origBasic   || 0,
+      origPosAdd:   record.origPosAdd  || 0,
+      origSkill:    record.origSkill   || 0,
+      origLang:     record.origLang    || 0,
+      newDept:      record.newDept     || '',
+      newPos:       record.newPos      || '',
+      newBasic:     record.newBasic    || 0,
+      newPosAdd:    record.newPosAdd   || 0,
+      newSkill:     record.newSkill    || 0,
+      newLang:      record.newLang     || 0,
+      status:       record.status      || 'pending_review',
+      reviewNote:   record.reviewNote  || '',
+      reviewedAt:   record.reviewedAt  || '',
+      approveNote:  record.approveNote || '',
+      approvedAt:   record.approvedAt  || ''
+    };
+    // GET fetch — same pattern as other VRT systems (GAS Web App handles CORS)
+    const qs = 'action=hrSync&data=' + encodeURIComponent(JSON.stringify(slim));
+    const res = await fetch(url + '?' + qs);
+    const result = await res.json();
+    if(result.ok) console.log('GAS sync OK:', action);
+    else console.warn('GAS sync returned error:', result);
+  }catch(e){
+    console.warn('GAS sync failed:', e.message);
+  }
+}
+
+async function syncGroupToGAS(record){
+  const url = getGasUrl();
+  if(!url) return;
+  try{
+    const slim = {
+      id:           record.id,
+      appDate:      record.appDate       || '',
+      effectiveDate:record.effectiveDate || '',
+      type:         record.type          || '',
+      note:         record.note          || '',
+      employees:    record.employees     || [],
+      createdAt:    record.createdAt     || new Date().toISOString()
+    };
+    const qs = 'action=hrGroupSync&data=' + encodeURIComponent(JSON.stringify(slim));
+    const res = await fetch(url + '?' + qs);
+    const result = await res.json();
+    if(result.ok) console.log('Group sync OK');
+  }catch(e){ console.warn('Group GAS sync failed:', e.message); }
+}
+
+async function syncSalaryYearToGAS(year){
+  const url = getGasUrl();
+  if(!url) return;
+  try{
+    const rows = state.salaryByYear[year] || [];
+    const payload = { year, rows };
+    const qs = 'action=hrSalarySync&data=' + encodeURIComponent(JSON.stringify(payload));
+    const res = await fetch(url + '?' + qs);
+    const result = await res.json();
+    if(result.ok) console.log('Salary sync OK year:', year);
+    else console.warn('Salary sync error:', result);
+  }catch(e){ console.warn('Salary GAS sync failed:', e.message); }
+}
+
+async function syncAllSalaryToGAS(){
+  const url = getGasUrl();
+  if(!url){ toast('⚙️ GAS URL not set','error'); return; }
+  const years = Object.keys(state.salaryByYear);
+  let count = 0;
+  for(const year of years){
+    try{
+      const rows = state.salaryByYear[year] || [];
+      const payload = { year, rows };
+      const qs = 'action=hrSalarySync&data=' + encodeURIComponent(JSON.stringify(payload));
+      const res = await fetch(url + '?' + qs);
+      const result = await res.json();
+      if(result.ok) count++;
+    }catch(e){ console.warn('Salary sync failed for year', year, e.message); }
+  }
+  toast(`☁️ Salary structure synced: ${count} year(s)`, 'success');
 }
 
 async function loadFromGAS(){
@@ -3882,16 +3973,13 @@ async function loadFromGAS(){
     const res  = await fetch(`${getGasUrl()}?action=hrList`);
     const data = await res.json();
     if(data.records && data.records.length > 0){
-      // Merge: cloud wins for status/approval fields, keep local for salary details
       data.records.forEach(cloud=>{
         const idx = state.transfers.findIndex(x=>x.id===cloud.id);
         if(idx>=0){
-          // Update status-related fields from cloud
           ['status','reviewNote','reviewedAt','approveNote','approvedAt'].forEach(f=>{
             if(cloud[f]) state.transfers[idx][f] = cloud[f];
           });
         } else {
-          // Cloud record not in local — add it (basic fields only)
           state.transfers.push({
             id: cloud.id, applicant: cloud.applicant||'',
             empId: cloud.empId||'', empName: cloud.empName||'',
@@ -3910,12 +3998,48 @@ async function loadFromGAS(){
           });
         }
       });
-      saveState();
-      renderTransfer();
-      toast(`☁️ 已從雲端載入 ${data.records.length} 筆記錄`,'success');
-    } else {
-      toast('雲端暫無記錄','');
+      saveState(); renderTransfer();
     }
+
+    // Also load group transfers
+    try{
+      const grpRes  = await fetch(url + '?action=hrGroupList');
+      const grpData = await grpRes.json();
+      if(grpData.records && grpData.records.length > 0){
+        grpData.records.forEach(cloud=>{
+          const idx = state.groupTransfers.findIndex(x=>x.id===cloud.id);
+          if(idx<0) state.groupTransfers.push({
+            id: cloud.id, appDate: cloud.appDate||'',
+            effectiveDate: cloud.effectiveDate||'', type: cloud.type||'crossLine',
+            note: cloud.note||'', employees: cloud.employees||[]
+          });
+        });
+        saveState(); renderGroupTransfers();
+      }
+    }catch(ge){ console.warn('Group load failed:', ge.message); }
+
+    const totalInd = data.records ? data.records.length : 0;
+
+    // Load salary structure from cloud
+    let salaryYears = 0;
+    try{
+      const salRes  = await fetch(url + '?action=hrSalaryList');
+      const salData = await salRes.json();
+      if(salData.years && Object.keys(salData.years).length > 0){
+        Object.entries(salData.years).forEach(([year, rows])=>{
+          if(rows && rows.length > 0){
+            state.salaryByYear[year] = rows;
+            salaryYears++;
+          }
+        });
+        saveState();
+        renderYearSwitcher();
+        renderSalary();
+        renderBaseWageTable();
+      }
+    }catch(se){ console.warn('Salary load failed:', se.message); }
+
+    toast(`☁️ Loaded: ${totalInd} transfers · ${salaryYears} salary year(s) synced`, 'success');
   }catch(e){
     toast('☁️ 載入失敗：'+e.message,'error');
   } finally {
