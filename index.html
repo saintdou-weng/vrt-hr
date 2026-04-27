@@ -1088,6 +1088,10 @@ td.total{font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;fon
     <div class="modal-body">
       <input type="hidden" id="tf-id">
       <input type="hidden" id="tf-status" value="pending_review">
+      <!-- GAS URL warning -->
+      <div id="tf-gas-warning" style="display:none;padding:8px 12px;border-radius:var(--radius-sm);margin-bottom:10px;font-size:12px;background:#FEF3C7;color:#B45309;border-left:3px solid #F59E0B">
+        ⚠️ GAS URL not configured — data will only save locally. Click <strong>⚙️</strong> (top-right) to set up cloud sync.
+      </div>
       <!-- Status banner shown when editing -->
       <div id="tf-status-banner" style="display:none;padding:8px 12px;border-radius:var(--radius-sm);margin-bottom:12px;font-size:13px;font-weight:500"></div>
       <div class="form-grid cols-3">
@@ -3667,6 +3671,9 @@ function openTransferModal(id){
 
   document.getElementById('tf-id').value = id||'';
   document.getElementById('tf-status').value = 'pending_review';
+  // Show GAS URL warning if not configured
+  const gasWarn = document.getElementById('tf-gas-warning');
+  if(gasWarn) gasWarn.style.display = getGasUrl() ? 'none' : 'block';
 
   if(id){
     const r = state.transfers.find(x=>x.id===id);
@@ -3754,13 +3761,18 @@ function saveTransfer(){
   renderTransfer();
   renderDashboard();
 
-  // Sync to GAS (GAS will send Telegram notification)
-  if(isNew){
-    syncTransferToGAS(record, 'new');
-  } else {
-    syncTransferToGAS(record, 'update');
-  }
-  toast(isNew ? '✅ Application submitted — notifying Phary' : t('toast.saved'), 'success');
+  // Sync to GAS with visible feedback
+  const syncAction = isNew ? 'new' : 'update';
+  const baseMsg = isNew ? '✅ Application submitted' : '✅ Updated';
+  toast(baseMsg + ' — uploading to cloud...', 'success');
+
+  syncTransferToGAS(record, syncAction).then(ok => {
+    if(ok){
+      toast(baseMsg + (isNew ? ' — Phary notified via Telegram ☁️' : ' & synced ☁️'), 'success');
+    } else {
+      toast(baseMsg + ' (locally saved — cloud sync failed, check ⚙️ GAS URL)', 'error');
+    }
+  });
 }
 
 function deleteTransfer(id){
@@ -3867,49 +3879,47 @@ function buildTransferSummaryHtml(r){
 async function syncTransferToGAS(record, action){
   const url = getGasUrl();
   if(!url){
-    console.warn('GAS URL not set — open ⚙️ to configure');
-    toast('⚙️ GAS URL not configured. Click gear icon top-right.', 'error');
-    return;
+    console.warn('GAS URL not set');
+    return false;
   }
   try{
-    // Slim payload — only fields GAS needs (avoid URL length limits)
     const slim = {
       _action:      action,
       id:           record.id,
-      submittedAt:  record.submittedAt || new Date().toISOString(),
-      applicant:    record.applicant   || '',
-      empId:        record.empId       || '',
-      empName:      record.empName     || '',
-      joinDate:     record.joinDate    || '',
-      effectiveDate:record.effectiveDate || '',
-      reason:       record.reason      || '',
+      submittedAt:  record.submittedAt  || new Date().toISOString(),
+      applicant:    record.applicant    || '',
+      empId:        record.empId        || '',
+      empName:      record.empName      || '',
+      joinDate:     record.joinDate     || '',
+      effectiveDate:record.effectiveDate|| '',
+      reason:       record.reason       || '',
       reasonDetail: record.reasonDetail || '',
-      origDept:     record.origDept    || '',
-      origPos:      record.origPos     || '',
-      origBasic:    record.origBasic   || 0,
-      origPosAdd:   record.origPosAdd  || 0,
-      origSkill:    record.origSkill   || 0,
-      origLang:     record.origLang    || 0,
-      newDept:      record.newDept     || '',
-      newPos:       record.newPos      || '',
-      newBasic:     record.newBasic    || 0,
-      newPosAdd:    record.newPosAdd   || 0,
-      newSkill:     record.newSkill    || 0,
-      newLang:      record.newLang     || 0,
-      status:       record.status      || 'pending_review',
-      reviewNote:   record.reviewNote  || '',
-      reviewedAt:   record.reviewedAt  || '',
-      approveNote:  record.approveNote || '',
-      approvedAt:   record.approvedAt  || ''
+      origDept:     record.origDept     || '',
+      origPos:      record.origPos      || '',
+      origBasic:    record.origBasic    || 0,
+      origPosAdd:   record.origPosAdd   || 0,
+      origSkill:    record.origSkill    || 0,
+      origLang:     record.origLang     || 0,
+      newDept:      record.newDept      || '',
+      newPos:       record.newPos       || '',
+      newBasic:     record.newBasic     || 0,
+      newPosAdd:    record.newPosAdd    || 0,
+      newSkill:     record.newSkill     || 0,
+      newLang:      record.newLang      || 0,
+      status:       record.status       || 'pending_review',
+      reviewNote:   record.reviewNote   || '',
+      reviewedAt:   record.reviewedAt   || '',
+      approveNote:  record.approveNote  || '',
+      approvedAt:   record.approvedAt   || ''
     };
-    // GET fetch — same pattern as other VRT systems (GAS Web App handles CORS)
-    const qs = 'action=hrSync&data=' + encodeURIComponent(JSON.stringify(slim));
+    const qs  = 'action=hrSync&data=' + encodeURIComponent(JSON.stringify(slim));
     const res = await fetch(url + '?' + qs);
     const result = await res.json();
-    if(result.ok) console.log('GAS sync OK:', action);
-    else console.warn('GAS sync returned error:', result);
+    if(result.ok){ return true; }
+    else { console.warn('GAS sync error:', result); return false; }
   }catch(e){
     console.warn('GAS sync failed:', e.message);
+    return false;
   }
 }
 
