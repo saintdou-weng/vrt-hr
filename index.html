@@ -3205,260 +3205,223 @@ function updatePaulLockUI(){
 }
 
 /* ============================================================
-   EXCEL IMPORT — supports 3 historical formats:
-   A) Adjust_Salary: N° | ID | Name | JoinDate | Position | Basic | Seniority | Skill | PosAdd | Lang | Travel | Attend | Total | AdjustAmt
-   B) Position Change Transfer: N | ID | Name | JoinDate | OrigDept | OrigPos | NewDept | NewPos | Reason | StartDate | Basic | PosAdd | Skill
-   C) New format: No | Applicant | Employee ID | Name | EffDate | Reason | Status | Dept(B) | Pos(B) | Total(B) | Dept(A) | Pos(A) | Total(A) | Diff
+   EXCEL IMPORT — 3 formats, smart sheet detection, proper dates
+   A) Salary Adjust:  N°|ID|Name|JoinDate|Position|Basic|…|Total|AdjustAmt|AdjustDate
+   B) Position Change: N|ID|Name|JoinDate|OrigDept|OrigPos|NewDept|NewPos|Reason|StartDate
+   C) System format:  No.|Applicant|Employee ID|Name|Effective Date|Reason|Dept(B)|…|Dept(A)
    ============================================================ */
 function importTransferXlsx(event){
   const file = event.target.files[0];
   event.target.value = '';
   if(!file) return;
-
   const reader = new FileReader();
   reader.onload = function(e){
     try{
-      const wb   = XLSX.read(e.target.result, {type:'array', cellDates:true, raw:false});
-      // Try main sheet first, then first sheet
-      const sheetName = wb.SheetNames.find(n=>/record|trans|report|salary/i.test(n)) || wb.SheetNames[0];
-      const ws   = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:false});
+      // Read with cellDates:true but WITHOUT raw:false so dates stay as Date objects
+      const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
 
-      // ── Auto-detect format ──
-      let fmt = null, hdrIdx = 0;
-      for(let i=0; i<Math.min(8, rows.length); i++){
-        const cells = rows[i].map(c=>c!=null?String(c).toLowerCase().trim():'');
-        // Format C: has "employee id" or "emp id" and "dept (b)"
-        if(cells.some(c=>c==='employee id'||c==='emp id') && cells.some(c=>c.includes('dept'))){
-          fmt='C'; hdrIdx=i; break;
-        }
-        // Format B: has "original" or "orig" and "new dept"  
-        if(cells.some(c=>c.includes('original')||c==='original dept'||c==='orig') && 
-           cells.some(c=>c.includes('reason'))){
-          fmt='B'; hdrIdx=i; break;
-        }
-        // Format A: has "basic salary" and "adjust amount"
-        if((cells.some(c=>c.includes('basic salary')||c==='基本薪資'||c==='底薪')) &&
-           (cells.some(c=>c.includes('adjust')||c.includes('total')))){
-          fmt='A'; hdrIdx=i; break;
-        }
-        // Format B alt: 2-row header (row i has 'original', row i+1 has 'dept')
-        if(cells.some(c=>c==='original'||c==='before') && i+1<rows.length){
-          const next = rows[i+1].map(c=>c!=null?String(c).toLowerCase().trim():'');
-          if(next.some(c=>c==='dept'||c==='position')){
-            fmt='B'; hdrIdx=i; break;
+      // ── Smart sheet detection: try all sheets, pick best format match ──
+      let bestSheet=null, bestFmt=null, bestHdrIdx=0;
+      for(const sname of wb.SheetNames){
+        const ws  = wb.Sheets[sname];
+        const rows= XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+        for(let i=0;i<Math.min(10,rows.length);i++){
+          const cells = rows[i].map(c=>c!=null?String(c).toLowerCase().trim():'');
+          // Format C: Employee ID + Dept (B)
+          if(cells.some(c=>c==='employee id'||c==='employee id') && cells.some(c=>c.includes('dept')&&c.includes('b'))){
+            bestSheet=sname; bestFmt='C'; bestHdrIdx=i; break;
+          }
+          // Format B: Original dept/pos + Reason
+          if((cells.some(c=>c==='original'||c.includes('original dept')||c.includes('orig'))) &&
+              cells.some(c=>c.includes('reason')||c.includes('new dept'))){
+            bestSheet=sname; bestFmt='B'; bestHdrIdx=i; break;
+          }
+          // Format A: Basic Salary + Adjust/Total
+          if((cells.some(c=>c.includes('basic salary')||c==='底薪'||c.includes('basic sal'))) &&
+              (cells.some(c=>c.includes('adjust')||c.includes('total')))){
+            if(!bestFmt){ bestSheet=sname; bestFmt='A'; bestHdrIdx=i; }
           }
         }
+        if(bestFmt==='C') break; // C is the most specific, stop searching
       }
 
-      if(!fmt){ toast('無法辨識 Excel 格式，請確認欄位標題','error'); return; }
-      console.log('Detected format:', fmt, 'header row:', hdrIdx);
+      if(!bestFmt){ toast('無法辨識 Excel 格式，請確認欄位標題','error'); return; }
+      console.log('Format:', bestFmt, 'Sheet:', bestSheet, 'HeaderRow:', bestHdrIdx);
 
-      const grab = (row, col) => col>=0 && row[col]!=null ? String(row[col]).trim() : '';
-      const grabN= (row, col) => { const v=grab(row,col).replace(/[^0-9.-]/g,''); const n=parseFloat(v); return isNaN(n)?0:n; };
-      const grabDate = (row, col) => {
-        if(col<0||row[col]==null) return '';
-        const v = row[col];
-        if(v instanceof Date) return fmtDate(v);
-        const s = String(v).trim().substring(0,10);
-        const d = new Date(s);
-        return isNaN(d.getTime()) ? s : fmtDate(d);
+      const ws   = wb.Sheets[bestSheet];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+      const hdr  = rows[bestHdrIdx].map(c=>c!=null?String(c).toLowerCase().trim():'');
+      const hdr2 = (bestHdrIdx+1<rows.length) ? rows[bestHdrIdx+1].map(c=>c!=null?String(c).toLowerCase().trim():'') : [];
+
+      // Column finder
+      const ci = (...names) => {
+        for(const nm of names){
+          const n=nm.toLowerCase();
+          let idx=hdr.findIndex(h=>h===n||h.includes(n));
+          if(idx<0&&hdr2.length) idx=hdr2.findIndex(h=>h===n||h.includes(n));
+          if(idx>=0) return idx;
+        }
+        return -1;
       };
-      const mapReason = raw => {
+
+      // Value extractors — handle both string and Date
+      const grab = (row,col)=>col>=0&&row[col]!=null?String(row[col]).trim():'';
+      const grabN = (row,col)=>{ const v=grab(row,col).replace(/[^0-9.-]/g,''); const n=parseFloat(v); return isNaN(n)?0:n; };
+      const grabDate = (row,col)=>{
+        if(col<0||row[col]==null) return '';
+        const v=row[col];
+        if(v instanceof Date) return fmtDate(v);
+        const s=String(v).trim();
+        // Handle "2026/02/01", "2/1/2026", "2026-02-01"
+        const patterns=[/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/, /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/];
+        for(const p of patterns){
+          const m=s.match(p);
+          if(m) return s.includes('-')&&m[1].length===4 ? s.substring(0,10) : `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
+        }
+        const d=new Date(s);
+        return isNaN(d.getTime())?'':fmtDate(d);
+      };
+      const mapReason = raw=>{
         const r=(raw||'').toLowerCase();
         if(r.includes('promot')||r.includes('升職')||r.includes('leader')||r.includes('supervisor')) return 'Promote';
         if(r.includes('demot')||r.includes('降職')) return 'Demote';
-        if(r.includes('transfer')||r.includes('移線')||r.includes('調線')||r.includes(' to l')) return 'Transfer';
+        if(r.includes('transfer')||r.includes('調線')||r.includes(' to l')||r.includes('l1')||r.includes('l2')||r.includes('l3')) return 'Transfer';
         return 'Adjust';
       };
 
       let imported=0, skipped=0;
+      const dataStart = hdr2.some(h=>h.length>0) ? bestHdrIdx+2 : bestHdrIdx+1;
 
-      // ── FORMAT A: Adjust Salary ──
-      if(fmt==='A'){
-        const hdr = rows[hdrIdx].map(c=>c!=null?String(c).toLowerCase().trim():'');
-        const hdr2 = hdrIdx+1<rows.length ? rows[hdrIdx+1].map(c=>c!=null?String(c).toLowerCase().trim():'') : [];
-        const ci = (...names) => {
-          for(const nm of names){
-            let idx = hdr.findIndex(h=>h.includes(nm));
-            if(idx<0) idx = hdr2.findIndex(h=>h.includes(nm));
-            if(idx>=0) return idx;
-          }
-          return -1;
-        };
-        const colId    = ci('id','工號');
-        const colName  = ci('name','姓名');
-        const colJoin  = ci('join','入職');
-        const colPos   = ci('position','崗位','position');
-        const colBasic = ci('basic','底薪');
-        const colSkill = ci('skill','技能');
-        const colPosAdd= ci('position add','職位','posit');
-        const colLang  = ci('language','語言');
-        const colTrav  = ci('travel','交通','house','房屋');
-        const colAtten = ci('attend','全勤');
-        const colTotal = ci('total','總額');
-        const colAdj   = ci('adjust','調動');
-        const colSen   = ci('seniority','工齡');
+      if(bestFmt==='C'){
+        const colAppl = ci('applicant');
+        const colId   = ci('employee id','emp id');
+        const colName = ci('name');
+        const colDate = ci('effective date','effective');
+        const colReas = ci('reason');
+        const colDB   = ci('dept (b)','dept(b)');
+        const colPB   = ci('position (b)','pos(b)','position (b)');
+        const colTB   = ci('salary total (b)','total (b)','total(b)');
+        const colDA   = ci('dept (a)','dept(a)');
+        const colPA   = ci('position (a)','pos(a)','position (a)');
+        const colTA   = ci('salary total (a)','total (a)','total(a)');
 
-        const dataStart = hdr2.length>0 ? hdrIdx+2 : hdrIdx+1;
         rows.slice(dataStart).forEach(row=>{
           if(!row||row.every(c=>c==null||String(c).trim()==='')) return;
-          const empId = grab(row, colId);
-          const empName = grab(row, colName);
+          const empId=grab(row,colId), empName=grab(row,colName);
           if(!empId&&!empName){skipped++;return;}
-          const totalBefore = grabN(row, colTotal);
-          const adjAmt      = grabN(row, colAdj);
-          const totalAfter  = adjAmt!==0 ? totalBefore+adjAmt : totalBefore;
-          const basic       = grabN(row, colBasic);
-          const posAdd      = grabN(row, colPosAdd);
-          const skill       = grabN(row, colSkill);
-          const lang        = grabN(row, colLang);
-          const trav        = grabN(row, colTrav);
-          const atten       = grabN(row, colAtten);
-          const sen         = grabN(row, colSen);
-
-          const dup = state.transfers.find(t=>t.empId===empId&&t.reason==='Adjust');
-          if(dup){skipped++;return;}
-
+          const effDate=grabDate(row,colDate), raw=grab(row,colReas);
+          const key=`${empId}|${effDate}|${mapReason(raw)}`;
+          if(state.transfers.some(t=>`${t.empId}|${t.effectiveDate}|${t.reason}`===key)){skipped++;return;}
+          const tb=grabN(row,colTB), ta=grabN(row,colTA);
           state.transfers.push({
-            id: uid('t'), applicant:'—', empId, empName,
-            joinDate: grabDate(row, colJoin),
-            effectiveDate: fmtDate(new Date()),
-            reason:'Adjust', reasonDetail: grab(row, colPos),
-            origDept:'', origPos: grab(row, colPos),
-            origBasic: basic, origPosAdd: posAdd, origSkill: skill, origLang: lang+trav+atten+sen,
-            newDept:'', newPos: grab(row, colPos),
-            newBasic: basic+adjAmt, newPosAdd: posAdd, newSkill: skill, newLang: lang+trav+atten+sen,
-            status:'approved', reviewNote:'Imported from Excel (Salary Adjust)',
-            reviewedAt: new Date().toISOString(), approveNote:'Historical import',
-            approvedAt: new Date().toISOString(), submittedAt: new Date().toISOString()
-          });
-          imported++;
-        });
-      }
-
-      // ── FORMAT B: Position Change Transfer (2-row header) ──
-      else if(fmt==='B'){
-        // Merge 2 header rows
-        const h1 = rows[hdrIdx].map(c=>c!=null?String(c).toLowerCase().trim():'');
-        const h2 = hdrIdx+1<rows.length ? rows[hdrIdx+1].map(c=>c!=null?String(c).toLowerCase().trim():'') : [];
-        const merged = h1.map((h,i)=>(h+' '+h2[i]).trim().toLowerCase());
-        const ci = (...names) => {
-          for(const nm of names){
-            let idx = merged.findIndex(h=>h.includes(nm));
-            if(idx>=0) return idx;
-            idx = h1.findIndex(h=>h.includes(nm));
-            if(idx>=0) return idx;
-          }
-          return -1;
-        };
-        const colN      = ci('n°','n ','no','#');
-        const colId     = ci('id','工號');
-        const colName   = ci('name');
-        const colJoin   = ci('join');
-        const colODept  = ci('original dept','orig dept','original ');
-        const colOPos   = ci('original position','orig pos','original pos');
-        const colNDept  = ci('new dept','new d');
-        const colNPos   = ci('new position','new pos','new p');
-        const colReason = ci('reason');
-        const colDate   = ci('start','date','effective');
-        const colBasic  = ci('basic');
-        const colPosAdd = ci('position add','position bonus','posit');
-        const colSkill  = ci('skill');
-
-        const dataStart = h2.some(h=>h.length>0) ? hdrIdx+2 : hdrIdx+1;
-        rows.slice(dataStart).forEach(row=>{
-          if(!row||row.every(c=>c==null||String(c).trim()==='')) return;
-          const empId = grab(row, colId);
-          const empName = grab(row, colName);
-          if(!empId&&!empName){skipped++;return;}
-          // Skip if N° column is empty or non-numeric
-          const nVal = grab(row, colN);
-          if(colN>=0 && nVal && isNaN(parseInt(nVal))){skipped++;return;}
-          const effDate = grabDate(row, colDate) || fmtDate(new Date());
-          const raw = grab(row, colReason);
-          const basic = grabN(row, colBasic);
-          const posAdd= grabN(row, colPosAdd);
-          const skill = grabN(row, colSkill);
-
-          const dup = state.transfers.find(t=>t.empId===empId&&t.effectiveDate===effDate);
-          if(dup){skipped++;return;}
-
-          state.transfers.push({
-            id: uid('t'), applicant:'—', empId, empName,
-            joinDate: grabDate(row, colJoin), effectiveDate: effDate,
-            reason: mapReason(raw), reasonDetail: raw,
-            origDept: grab(row, colODept), origPos: grab(row, colOPos),
-            origBasic: basic, origPosAdd: posAdd, origSkill: skill, origLang: 0,
-            newDept: grab(row, colNDept), newPos: grab(row, colNPos),
-            newBasic: basic, newPosAdd: posAdd, newSkill: skill, newLang: 0,
-            status:'approved', reviewNote:'Imported from Excel (Position Transfer)',
-            reviewedAt: new Date().toISOString(), approveNote:'Historical import',
-            approvedAt: new Date().toISOString(), submittedAt: new Date().toISOString()
-          });
-          imported++;
-        });
-      }
-
-      // ── FORMAT C: New system export format ──
-      else if(fmt==='C'){
-        const hdr = rows[hdrIdx].map(c=>c!=null?String(c).toLowerCase().trim():'');
-        const ci = (...names)=>{ for(const nm of names){ const i=hdr.findIndex(h=>h.includes(nm)); if(i>=0) return i; } return -1; };
-        const colAppl  = ci('applicant');
-        const colEmpId = ci('employee id','emp id');
-        const colName  = ci('name');
-        const colDate  = ci('effective');
-        const colReas  = ci('reason');
-        const colDB    = ci('dept (b)','dept(b)');
-        const colPB    = ci('position (b)','pos(b)');
-        const colTB    = ci('salary total (b)','total (b)','total(b)');
-        const colDA    = ci('dept (a)','dept(a)');
-        const colPA    = ci('position (a)','pos(a)');
-        const colTA    = ci('salary total (a)','total (a)','total(a)');
-
-        rows.slice(hdrIdx+1).forEach(row=>{
-          if(!row||row.every(c=>c==null||String(c).trim()==='')) return;
-          const noVal = row[0]!=null?String(row[0]):'';
-          if(noVal.startsWith('=')) return;
-          const empId = grab(row, colEmpId);
-          const empName = grab(row, colName);
-          if(!empId&&!empName){skipped++;return;}
-          const effDate = grabDate(row, colDate);
-          const raw = grab(row, colReas);
-
-          const dup = state.transfers.find(t=>t.empId===empId&&t.effectiveDate===effDate&&t.reason===mapReason(raw));
-          if(dup){skipped++;return;}
-
-          state.transfers.push({
-            id: uid('t'), applicant: grab(row,colAppl)||'—', empId, empName,
-            joinDate:'', effectiveDate: effDate, reason: mapReason(raw), reasonDetail: raw,
-            origDept: grab(row,colDB), origPos: grab(row,colPB),
-            origBasic: grabN(row,colTB), origPosAdd:0, origSkill:0, origLang:0,
-            newDept: grab(row,colDA), newPos: grab(row,colPA),
-            newBasic: grabN(row,colTA), newPosAdd:0, newSkill:0, newLang:0,
+            id:uid('t'), applicant:grab(row,colAppl)||'—', empId, empName,
+            joinDate:'', effectiveDate:effDate,
+            reason:mapReason(raw), reasonDetail:raw,
+            origDept:grab(row,colDB), origPos:grab(row,colPB),
+            origBasic:tb, origPosAdd:0, origSkill:0, origLang:0,
+            newDept:grab(row,colDA), newPos:grab(row,colPA),
+            newBasic:ta, newPosAdd:0, newSkill:0, newLang:0,
             status:'approved', reviewNote:'Imported from Excel',
-            reviewedAt: new Date().toISOString(), approveNote:'Historical import',
-            approvedAt: new Date().toISOString(), submittedAt: new Date().toISOString()
+            reviewedAt:new Date().toISOString(), approveNote:'Historical import',
+            approvedAt:new Date().toISOString(), submittedAt:new Date().toISOString()
           });
           imported++;
         });
       }
 
-      if(imported===0){
-        toast(`未匯入任何記錄（跳過 ${skipped} 列）— 格式: ${fmt}`,'error');
-        return;
-      }
-      saveState(); renderTransfer(); renderDashboard();
-      toast(`✅ 匯入 ${imported} 筆歷史記錄（格式 ${fmt}）${skipped>0?' · 跳過'+skipped+'列':''}`, 'success');
+      else if(bestFmt==='B'){
+        const merged=hdr.map((h,i)=>(h+' '+(hdr2[i]||'')).trim());
+        const ci2=(...names)=>{ for(const nm of names){ const n=nm.toLowerCase(); let i=merged.findIndex(h=>h.includes(n)); if(i<0) i=hdr.findIndex(h=>h.includes(n)); if(i>=0) return i; } return -1; };
+        const colId    =ci2('id','工號');
+        const colName  =ci2('name');
+        const colJoin  =ci2('join');
+        const colODept =ci2('original dept','orig dept');
+        const colOPos  =ci2('original pos','orig pos','original position');
+        const colNDept =ci2('new dept');
+        const colNPos  =ci2('new pos','new position');
+        const colReason=ci2('reason');
+        const colDate  =ci2('start date','start ','effective','date');
+        const colBasic =ci2('basic');
+        const colPosAdd=ci2('position add','position bon');
+        const colSkill =ci2('skill');
 
-    }catch(err){
-      console.error(err);
-      toast('匯入失敗：'+err.message,'error');
-    }
+        rows.slice(dataStart).forEach(row=>{
+          if(!row||row.every(c=>c==null||String(c).trim()==='')) return;
+          const empId=grab(row,colId), empName=grab(row,colName);
+          if(!empId&&!empName){skipped++;return;}
+          const effDate=grabDate(row,colDate)||fmtDate(new Date());
+          const raw=grab(row,colReason);
+          const key=`${empId}|${effDate}`;
+          if(state.transfers.some(t=>`${t.empId}|${t.effectiveDate}`===key)){skipped++;return;}
+          const basic=grabN(row,colBasic), posAdd=grabN(row,colPosAdd), skill=grabN(row,colSkill);
+          state.transfers.push({
+            id:uid('t'), applicant:'—', empId, empName,
+            joinDate:grabDate(row,colJoin), effectiveDate:effDate,
+            reason:mapReason(raw), reasonDetail:raw,
+            origDept:grab(row,colODept), origPos:grab(row,colOPos),
+            origBasic:basic, origPosAdd:posAdd, origSkill:skill, origLang:0,
+            newDept:grab(row,colNDept), newPos:grab(row,colNPos),
+            newBasic:basic, newPosAdd:posAdd, newSkill:skill, newLang:0,
+            status:'approved', reviewNote:'Imported from Excel (Transfer)',
+            reviewedAt:new Date().toISOString(), approveNote:'Historical import',
+            approvedAt:new Date().toISOString(), submittedAt:new Date().toISOString()
+          });
+          imported++;
+        });
+      }
+
+      else if(bestFmt==='A'){
+        const colId    =ci('id','工號');
+        const colName  =ci('name','姓名');
+        const colJoin  =ci('join','入職');
+        const colPos   =ci('position','崗位');
+        const colBasic =ci('basic salary','底薪');
+        const colSkill =ci('skill','技能');
+        const colPosAdd=ci('position add','職位','pos add');
+        const colLang  =ci('language','語言');
+        const colTrav  =ci('travel','交通','房屋');
+        const colAtten =ci('attend','全勤');
+        const colTotal =ci('total','總額');
+        const colAdj   =ci('adjust amount','調動金額','adjust');
+        const colAdjDate=ci('adjust date','調動日期');
+
+        rows.slice(dataStart).forEach(row=>{
+          if(!row||row.every(c=>c==null||String(c).trim()==='')) return;
+          const empId=grab(row,colId), empName=grab(row,colName);
+          if(!empId&&!empName){skipped++;return;}
+          const adjDate=grabDate(row,colAdjDate)||fmtDate(new Date());
+          const key=`${empId}|${adjDate}|Adjust`;
+          if(state.transfers.some(t=>`${t.empId}|${t.effectiveDate}|${t.reason}`===key)){skipped++;return;}
+          const totalB=grabN(row,colTotal), adjAmt=grabN(row,colAdj);
+          const basic=grabN(row,colBasic), posAdd=grabN(row,colPosAdd);
+          const skill=grabN(row,colSkill), lang=grabN(row,colLang);
+          const trav=grabN(row,colTrav), atten=grabN(row,colAtten);
+          state.transfers.push({
+            id:uid('t'), applicant:'—', empId, empName,
+            joinDate:grabDate(row,colJoin), effectiveDate:adjDate,
+            reason:'Adjust', reasonDetail:grab(row,colPos),
+            origDept:'', origPos:grab(row,colPos),
+            origBasic:basic, origPosAdd:posAdd, origSkill:skill, origLang:lang+trav+atten,
+            newDept:'', newPos:grab(row,colPos),
+            newBasic:basic+adjAmt, newPosAdd:posAdd, newSkill:skill, newLang:lang+trav+atten,
+            status:'approved', reviewNote:'Imported from Excel (Salary Adjust)',
+            reviewedAt:new Date().toISOString(), approveNote:'Historical import',
+            approvedAt:new Date().toISOString(), submittedAt:new Date().toISOString()
+          });
+          imported++;
+        });
+      }
+
+      if(imported===0){ toast(`未匯入任何記錄（跳過 ${skipped} 列，格式 ${bestFmt}，工作表 ${bestSheet}）`,'error'); return; }
+      saveState(); renderTransfer(); renderDashboard();
+      toast(`✅ 匯入 ${imported} 筆（格式 ${bestFmt}，工作表「${bestSheet}」）${skipped>0?' · 跳過'+skipped+'列':''}`, 'success');
+    }catch(err){ console.error(err); toast('匯入失敗：'+err.message,'error'); }
   };
   reader.readAsArrayBuffer(file);
 }
 
+/* ============================================================
+   PRINT — Individual Transfer Table
 /* ============================================================
    PRINT — Individual Transfer Table
 /* ============================================================
